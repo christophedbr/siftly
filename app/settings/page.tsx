@@ -15,6 +15,8 @@ import {
   ExternalLink,
   ChevronDown,
   Zap,
+  Copy,
+  Coffee,
 } from 'lucide-react'
 
 const ANTHROPIC_MODELS = [
@@ -63,20 +65,20 @@ function Section({ icon: Icon, title, description, children, variant = 'default'
     <div
       className={`bg-zinc-900 rounded-2xl p-6 transition-all duration-200 ${
         isDanger
-          ? 'border border-red-500/30 hover:border-red-500/50'
+          ? 'border border-red-700/60 hover:border-red-600/70'
           : 'border border-zinc-800 hover:border-zinc-700'
       }`}
     >
       <div className="flex items-start gap-3 mb-5">
         <div
           className={`p-2.5 rounded-xl shrink-0 ${
-            isDanger ? 'bg-red-500/10' : 'bg-indigo-500/10'
+            isDanger ? 'bg-red-800/40' : 'bg-indigo-500/10'
           }`}
         >
-          <Icon size={16} className={isDanger ? 'text-red-400' : 'text-indigo-400'} />
+          <Icon size={16} className={isDanger ? 'text-red-500' : 'text-indigo-400'} />
         </div>
         <div>
-          <h2 className={`text-base font-semibold ${isDanger ? 'text-red-300' : 'text-zinc-100'}`}>
+          <h2 className={`text-base font-semibold ${isDanger ? 'text-red-400' : 'text-zinc-100'}`}>
             {title}
           </h2>
           <p className="text-sm text-zinc-500 mt-0.5 leading-relaxed">{description}</p>
@@ -150,11 +152,11 @@ function ApiKeyField({
 
   return (
     <div className="space-y-2.5">
-      <div className="flex items-center justify-between">
-        <p className="text-sm font-medium text-zinc-300">{label}</p>
+      <div className="flex items-center justify-between gap-2 min-w-0">
+        <p className="text-sm font-medium text-zinc-300 shrink-0">{label}</p>
         {savedMasked && (
-          <span className="flex items-center gap-1.5 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-lg">
-            <Check size={11} /> Saved: <span className="font-mono">{savedMasked}</span>
+          <span className="flex items-center gap-1.5 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-lg min-w-0 overflow-hidden">
+            <Check size={11} className="shrink-0" /> <span className="shrink-0">Saved:</span> <span className="font-mono truncate">{savedMasked}</span>
           </span>
         )}
       </div>
@@ -412,7 +414,7 @@ function DangerZoneSection({ onToast }: { onToast: (t: Toast) => void }) {
       description="Irreversible actions that affect all your data."
       variant="danger"
     >
-      <div className="flex items-center justify-between p-4 rounded-xl bg-red-500/5 border border-red-500/10">
+      <div className="flex items-center justify-between p-4 rounded-xl bg-red-900/20 border border-red-800/40">
         <div>
           <p className="text-sm font-medium text-zinc-300">Clear all bookmarks</p>
           <p className="text-xs text-zinc-500 mt-0.5">Permanently delete all imported bookmarks</p>
@@ -420,7 +422,7 @@ function DangerZoneSection({ onToast }: { onToast: (t: Toast) => void }) {
         {!confirming ? (
           <button
             onClick={() => setConfirming(true)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-red-400 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 hover:border-red-500/40 transition-all"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-red-400 bg-red-800/30 hover:bg-red-700/40 border border-red-700/50 hover:border-red-600/60 transition-all"
           >
             <Trash2 size={14} />
             Clear all
@@ -458,24 +460,69 @@ const TECH_STACK = [
   { label: 'Tailwind CSS', color: 'bg-cyan-500/10 text-cyan-300 border-cyan-500/20' },
 ]
 
+const DONATION_ADDRESS = '0xcF10B967a9e422753812004Cd59990f62E360760'
+
 function AboutSection() {
+  const [copied, setCopied] = useState(false)
+
+  function copyAddress() {
+    void navigator.clipboard.writeText(DONATION_ADDRESS).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
   return (
     <Section icon={Info} title="About Siftly" description="Self-hosted Twitter bookmark manager">
       <p className="text-sm text-zinc-400 leading-relaxed mb-5">
         <strong className="text-zinc-100 font-semibold">Siftly</strong> is a self-hosted app for
-        organizing your Twitter/X bookmarks. Import bookmarks via the twitter-web-exporter extension,
-        run the 4-stage AI pipeline to analyze images, extract entities, generate semantic tags, and
+        organizing your Twitter/X bookmarks. Use the built-in bookmarklet or console script to import,
+        then run the 4-stage AI pipeline to analyze images, extract entities, generate semantic tags, and
         auto-categorize — then explore connections through the interactive mindmap.
       </p>
-      <div className="flex flex-wrap gap-2">
-        {TECH_STACK.map((tech) => (
-          <span
-            key={tech.label}
-            className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium border ${tech.color}`}
+
+      {/* Builder + support row */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        {/* Built by */}
+        <a
+          href="https://x.com/viperr"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-2.5 px-4 py-3 rounded-xl bg-zinc-800/50 border border-zinc-700/50 hover:border-zinc-600 hover:bg-zinc-800 transition-all group flex-1"
+        >
+          <span className="text-base leading-none">𝕏</span>
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-zinc-200 group-hover:text-white transition-colors">@viperr</p>
+            <p className="text-[11px] text-zinc-600">Built &amp; open-sourced by</p>
+          </div>
+          <ExternalLink size={12} className="text-zinc-600 group-hover:text-zinc-400 transition-colors ml-auto shrink-0" />
+        </a>
+
+        {/* Donate */}
+        <div className="flex-1 px-4 py-3 rounded-xl bg-amber-500/8 border border-amber-500/20">
+          <div className="flex items-center gap-2 mb-2">
+            <Coffee size={13} className="text-amber-400 shrink-0" />
+            <span className="text-xs font-semibold text-amber-300">Support development</span>
+          </div>
+          <p className="text-[11px] text-zinc-500 mb-2.5 leading-relaxed">
+            If Siftly saves you time, a crypto tip is always appreciated ☕
+          </p>
+          <button
+            onClick={copyAddress}
+            className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-zinc-900/60 border border-amber-500/20 hover:border-amber-500/50 hover:bg-zinc-900 transition-all group"
           >
-            {tech.label}
-          </span>
-        ))}
+            <span className="text-[10px] font-mono text-zinc-400 group-hover:text-zinc-200 transition-colors truncate">
+              {DONATION_ADDRESS}
+            </span>
+            {copied
+              ? <Check size={13} className="text-emerald-400 shrink-0" />
+              : <Copy size={13} className="text-zinc-600 group-hover:text-amber-400 transition-colors shrink-0" />
+            }
+          </button>
+          {copied && (
+            <p className="text-[10px] text-emerald-400 mt-1.5 text-center">Address copied!</p>
+          )}
+        </div>
       </div>
     </Section>
   )

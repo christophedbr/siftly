@@ -5,9 +5,7 @@
 
   <p><strong>Self-hosted Twitter/X bookmark manager with AI-powered organization</strong></p>
 
-  <p>
-    Import · Analyze · Categorize · Search · Explore
-  </p>
+  <p>Import · Analyze · Categorize · Search · Explore</p>
 
   <p>
     <img src="https://img.shields.io/badge/Next.js-15-black?style=flat-square&logo=next.js" alt="Next.js 15" />
@@ -22,16 +20,16 @@
 
 ## What is Siftly?
 
-Siftly turns your Twitter/X bookmark dump into a **searchable, categorized, visual knowledge base** — all running locally on your machine. No cloud, no subscriptions, no data leaving your device (except AI API calls you control).
+Siftly turns your Twitter/X bookmarks into a **searchable, categorized, visual knowledge base** — running entirely on your machine. No cloud, no subscriptions, no browser extensions required. Everything stays local except the AI API calls you control.
 
 It runs a **4-stage AI pipeline** on your bookmarks:
 
 ```
-📥 Import JSON
+📥 Import (built-in bookmarklet or console script — no extensions needed)
     ↓
-🔍 Vision Analysis      — reads text, objects, and context from every image/GIF/video thumbnail
+🏷️  Entity Extraction   — mines hashtags, URLs, mentions from raw tweet data (free, zero API calls)
     ↓
-🏷️  Entity Extraction   — mines hashtags, URLs, mentions from raw tweet data (free, no API calls)
+👁️  Vision Analysis      — reads text, objects, and context from every image/GIF/video thumbnail
     ↓
 🧠 Semantic Tagging     — generates 30–50 searchable tags per bookmark for AI-powered search
     ↓
@@ -39,68 +37,30 @@ It runs a **4-stage AI pipeline** on your bookmarks:
 ```
 
 After the pipeline runs, you get:
-- **AI search** — find bookmarks by meaning, not just keywords ("funny meme about crypto crashing")
+- **AI search** — find bookmarks by meaning, not just keywords (*"funny meme about crypto crashing"*)
 - **Interactive mindmap** — explore your entire bookmark graph visually
-- **Filtered browsing** — filter by category, media type, date
-- **Export tools** — download media, export as CSV/JSON/ZIP
+- **Filtered browsing** — grid or list view, filter by category, media type, and date
+- **Export tools** — download media, export as CSV / JSON / ZIP
 
----
-
-## Features
-
-### 📥 Import
-- Upload a JSON export from the [twitter-web-exporter](https://github.com/prinsss/twitter-web-exporter) browser extension
-- Auto-detects and deduplicates bookmarks on re-import
-- Stores full raw tweet JSON for zero-cost entity extraction later
-
-### 🤖 AI Pipeline (4 stages)
-| Stage | What it does | Cost |
-|-------|-------------|------|
-| **Vision** | Analyzes every image, GIF, and video thumbnail using Claude's vision model. Extracts OCR text, objects, scene, mood, meme templates, and 30–40 visual tags | ~$0.001/image |
-| **Entities** | Mines hashtags, URLs, @mentions, and known tool names from stored tweet JSON | Free |
-| **Semantic Tags** | Generates 30–50 precise search tags per bookmark combining text + image context | ~$0.0005/bookmark |
-| **Categorize** | Assigns 1–3 categories per bookmark with confidence scores | ~$0.0001/bookmark |
-
-**Estimated total cost for 1,000 bookmarks with 600 images: ~$1.50**
-
-### 🔍 AI Search
-- Natural language search: *"react hooks tutorial"*, *"bitcoin price chart"*, *"funny programmer meme"*
-- Searches tweet text, image OCR, visual tags, semantic tags, and categories simultaneously
-- Results ranked by relevance
-
-### 🗺️ Mindmap
-- Interactive force-directed graph of all bookmarks organized by category
-- Expand/collapse categories
-- Click any node to open the tweet on X
-
-### 📚 Browse & Filter
-- Grid/list view with lazy-loaded media
-- Filter by category, media type (photo/video/GIF), date range
-- Sort by newest, oldest, or most relevant
-
-### ⚙️ Categories
-- 8 default categories: Funny Memes, AI Resources, Dev Tools, Design, Finance & Crypto, Productivity, News, General
-- Each category has rich AI-readable descriptions for accurate classification
-- Color-coded with confidence scores per assignment
-
-### 📤 Export
-- Download individual images and videos
-- Export entire categories as ZIP archives
-- Export all data as CSV or JSON
+**Estimated cost: ~$1.50 to fully process 1,000 bookmarks with 600 images using Claude Haiku.**
 
 ---
 
 ## Quick Start
 
+> **If you're using Claude Code, Claude CLI, or openclaw:** run these commands one by one. Each step is self-contained.
+
 ### Prerequisites
+
 - Node.js 18+
-- An [Anthropic API key](https://console.anthropic.com) (for AI features — optional, browsing works without it)
+- npm
+- An [Anthropic API key](https://console.anthropic.com) *(required for AI features; importing and browsing work without one)*
 
 ### 1. Clone & Install
 
 ```bash
-git clone https://github.com/yourusername/siftly.git
-cd siftly
+git clone https://github.com/viperrcrypto/Siftly.git
+cd Siftly
 npm install
 ```
 
@@ -110,7 +70,7 @@ npm install
 npx prisma db push
 ```
 
-This creates a local SQLite database at `prisma/dev.db`. No external database needed.
+Creates a local SQLite database at `prisma/dev.db`. No external database needed.
 
 ### 3. Configure Environment
 
@@ -124,12 +84,14 @@ Edit `.env.local`:
 # Required
 DATABASE_URL="file:./prisma/dev.db"
 
-# Required for AI features (get yours at console.anthropic.com)
+# Required for AI features — get yours at console.anthropic.com
 ANTHROPIC_API_KEY=sk-ant-...
 
-# Optional: use a custom API endpoint (e.g. for proxies or local models)
-# ANTHROPIC_BASE_URL=http://localhost:8318
+# Optional: custom API endpoint (for proxies, openclaw routing, or local models)
+# ANTHROPIC_BASE_URL=http://localhost:8080
 ```
+
+> **Tip:** You can also enter your API key directly in the Siftly **Settings** page after launch — no restart required.
 
 ### 4. Run
 
@@ -141,58 +103,138 @@ Open [http://localhost:3000](http://localhost:3000)
 
 ---
 
-## Usage Guide
+## Importing Your Bookmarks
 
-### Step 1: Import Bookmarks
+Siftly has **built-in import tools** — no browser extensions required. Go to the **Import** page and choose either method:
 
-1. Install the [twitter-web-exporter](https://github.com/prinsss/twitter-web-exporter) Chrome/Firefox extension
-2. Go to [x.com/bookmarks](https://x.com/bookmarks) and scroll to load all bookmarks
-3. Click the extension → **Export as JSON**
-4. In Siftly, go to **Import** and upload the JSON file
+### Method A — Bookmarklet *(Recommended)*
 
-> **Tip:** You can re-import the same file safely — duplicates are automatically skipped.
+1. Go to **Import** in the Siftly sidebar
+2. Drag the **"Export X Bookmarks"** link to your browser's bookmark bar
+   *(or copy the URL manually: right-click bookmark bar → Add Bookmark → paste the URL)*
+3. Go to [x.com/bookmarks](https://x.com/bookmarks) while logged in to X
+4. Click **"Export X Bookmarks"** in your bookmark bar — a purple button appears on the page
+5. Click **"▶ Auto-scroll"** — the tool scrolls through and captures all your bookmarks automatically
+6. When complete, click the purple **"Export N bookmarks"** button — `bookmarks.json` downloads
+7. Back in Siftly → **Import** → drop or upload the file
 
-### Step 2: Run AI Categorization
+### Method B — Browser Console Script
 
-1. Go to **Categorize** in the sidebar
-2. Add your Anthropic API key in **Settings** (or set `ANTHROPIC_API_KEY` in `.env.local`)
-3. Click **Start AI Categorization**
+1. Go to [x.com/bookmarks](https://x.com/bookmarks) while logged in to X
+2. Open DevTools: press `F12` (Windows/Linux) or `⌘⌥J` (Mac), then go to the **Console** tab
+3. Copy the console script from the Siftly Import page, paste it into the console, and press Enter
+4. Click **"▶ Auto-scroll"** and wait for all bookmarks to be captured
+5. Click the export button — `bookmarks.json` downloads automatically
+6. Back in Siftly → **Import** → upload the file
 
-The pipeline runs 4 stages automatically. You can stop and resume anytime — it picks up where it left off.
+### Re-importing
 
-> **Re-run:** Click "Re-run everything (force all)" to re-analyze bookmarks that were already processed.
+Re-import anytime — Siftly automatically skips duplicates and only adds new bookmarks.
 
-### Step 3: Search & Explore
+---
 
-- Use **AI Search** to find bookmarks by natural language description
-- Use **Browse** to filter by category or media type
-- Use **Mindmap** to visually explore your knowledge graph
+## AI Categorization
+
+After importing, Siftly **automatically starts AI categorization**. You can also trigger it manually from:
+
+- The **Import** page (shown immediately after upload)
+- The **Mindmap** page (shown when bookmarks are uncategorized)
+- The **Categorize** page in the sidebar
+
+### The 4-Stage Pipeline
+
+| Stage | What it does | Cost |
+|-------|-------------|------|
+| **Entity Extraction** | Mines hashtags, URLs, @mentions, and 80+ known tool/product names from stored tweet JSON | Free |
+| **Vision Analysis** | Analyzes every image, GIF, and video thumbnail with Claude's vision model — OCR text, objects, scene, mood, meme templates, 30–40 visual tags | ~$0.001/image |
+| **Semantic Tagging** | Generates 30–50 precise search tags per bookmark by combining tweet text + image context | ~$0.0005/bookmark |
+| **Categorization** | Assigns 1–3 categories per bookmark with confidence scores using all enriched data | ~$0.0001/bookmark |
+
+The pipeline is **incremental** — if interrupted, it picks up where it left off. Use **"Re-run everything (force all)"** to re-analyze bookmarks that were already processed.
+
+---
+
+## Features
+
+### 🔍 AI Search
+
+Natural language queries across all bookmark data:
+
+- *"funny meme about crypto crashing"*
+- *"react hooks tutorial"*
+- *"bitcoin price chart"*
+- *"best AI coding tools"*
+
+Searches tweet text, image OCR, visual tags, semantic tags, and categories simultaneously. Results are ranked by relevance with AI-generated explanations for each match.
+
+### 🗺️ Mindmap
+
+Interactive force-directed graph showing all bookmarks organized by category:
+
+- Expand/collapse any category to reveal its bookmarks
+- Click a bookmark node to open the original tweet on X
+- Color-coded legend by category
+- Automatically shows an **AI Categorize** prompt when bookmarks haven't been processed yet
+
+### 📚 Browse & Filter
+
+- **Grid view** (masonry layout) or **List view**
+- Filter by category, media type (photo / video), or search text
+- Sort by newest or oldest
+- Pagination with 24 items per page
+- Active filter chips — removable individually or all at once
+- Hover any card to download media or jump to the original tweet
+
+### ⚙️ Categories
+
+8 default categories pre-seeded with AI-readable descriptions:
+
+| Category | Color |
+|----------|-------|
+| Funny Memes | Amber |
+| AI Resources | Violet |
+| Dev Tools | Cyan |
+| Design | Pink |
+| Finance & Crypto | Green |
+| Productivity | Orange |
+| News | Indigo |
+| General | Slate |
+
+Create custom categories with a name, color, and optional description. The description is passed directly to the AI during categorization — the more specific, the more accurate the results.
+
+### 📤 Export
+
+- **CSV** — spreadsheet-compatible with all fields
+- **JSON** — full structured data export
+- **ZIP** — exports a category's bookmarks + all media files with a `manifest.csv`
+
+### ⌨️ Command Palette
+
+Press `Cmd+K` (Mac) or `Ctrl+K` (Windows/Linux) to search across all bookmarks from anywhere in the app.
 
 ---
 
 ## Configuration
 
-All settings can be managed in the **Settings** page at `/settings`, or via environment variables:
+All settings are manageable in the **Settings** page at `/settings` or via environment variables:
 
 | Setting | Env Var | Description |
 |---------|---------|-------------|
 | Anthropic API Key | `ANTHROPIC_API_KEY` | Required for AI features |
-| API Base URL | `ANTHROPIC_BASE_URL` | Custom endpoint (proxy, local model) |
-| AI Model | Settings page | Choose which model to use for analysis |
+| API Base URL | `ANTHROPIC_BASE_URL` | Custom endpoint — proxies, openclaw, local models |
+| AI Model | Settings page | Haiku 4.5 (default, cheapest), Sonnet 4.6, Opus 4.6 |
+| OpenAI Key | Settings page | Alternative provider if no Anthropic key is set |
 | Database | `DATABASE_URL` | SQLite file path |
 
-### Using a Custom API Endpoint
+### Custom API Endpoint
 
-Siftly works with any OpenAI-compatible proxy or local model server. Set `ANTHROPIC_BASE_URL` to point to your endpoint:
+Point Siftly at any Anthropic-compatible server:
 
 ```env
-ANTHROPIC_BASE_URL=http://127.0.0.1:8318
+ANTHROPIC_BASE_URL=http://localhost:8080
 ```
 
-This is useful for:
-- OAuth-based access (e.g. Claude's X/Twitter OAuth proxy)
-- Rate-limit management proxies
-- Local Anthropic-compatible model servers
+Useful for openclaw routing, API proxies, rate-limit management, or self-hosted inference.
 
 ---
 
@@ -200,45 +242,55 @@ This is useful for:
 
 ```
 siftly/
-├── app/                          # Next.js App Router pages
+├── app/
 │   ├── api/
-│   │   ├── bookmarks/            # Bookmark CRUD + search
-│   │   ├── categorize/           # AI pipeline orchestration
-│   │   ├── categories/           # Category management
-│   │   ├── mindmap/              # Graph data for visualization
-│   │   ├── search/ai/            # AI semantic search
-│   │   └── settings/             # User settings
-│   ├── bookmarks/                # Browse page
-│   ├── categorize/               # AI pipeline UI
-│   ├── import/                   # Import page
-│   ├── mindmap/                  # Interactive graph
-│   └── settings/                 # Configuration
+│   │   ├── bookmarks/        # List, filter, paginate, delete
+│   │   ├── categorize/       # 4-stage AI pipeline (start, status, stop)
+│   │   ├── categories/       # Category CRUD
+│   │   ├── export/           # CSV, JSON, ZIP export
+│   │   ├── import/           # JSON file import with deduplication
+│   │   ├── mindmap/          # Graph nodes + edges for visualization
+│   │   ├── search/ai/        # Natural language semantic search
+│   │   ├── settings/         # API key + model config
+│   │   └── stats/            # Dashboard stats
+│   ├── ai-search/            # AI search page
+│   ├── bookmarks/            # Browse, filter, paginate
+│   ├── categorize/           # Pipeline monitor with live progress
+│   ├── categories/           # Category management
+│   ├── import/               # 3-step import flow (instructions → upload → categorize)
+│   ├── mindmap/              # Interactive graph
+│   ├── settings/             # Configuration
+│   └── page.tsx              # Dashboard
 │
 ├── components/
-│   ├── nav.tsx                   # Sidebar navigation
-│   ├── bookmark-card.tsx         # Bookmark display card
-│   ├── category-card.tsx         # Category display
-│   └── command-palette.tsx       # Ctrl+K search
+│   ├── bookmark-card.tsx     # Card with media, categories, hover actions
+│   ├── category-card.tsx     # Category display card
+│   ├── command-palette.tsx   # Cmd+K global search
+│   ├── nav.tsx               # Sidebar navigation
+│   └── theme-toggle.tsx      # Light/dark mode
 │
 ├── lib/
-│   ├── categorizer.ts            # AI categorization logic + prompts
-│   ├── vision-analyzer.ts        # Image analysis + semantic enrichment
-│   ├── rawjson-extractor.ts      # Zero-cost entity extraction from raw JSON
-│   └── db.ts                     # Prisma client singleton
+│   ├── categorizer.ts        # AI categorization logic + default categories
+│   ├── vision-analyzer.ts    # Image analysis + semantic tagging
+│   ├── rawjson-extractor.ts  # Zero-cost entity extraction
+│   ├── parser.ts             # Multi-format JSON parser
+│   ├── exporter.ts           # CSV, JSON, ZIP export
+│   └── db.ts                 # Prisma client singleton
 │
 └── prisma/
-    └── schema.prisma             # Database schema
+    └── schema.prisma         # SQLite schema
 ```
 
 ### Database Schema
 
 ```
 Bookmark          — tweet text, author, date, raw JSON, semantic tags, enrichment timestamp
-  └── MediaItem   — images/videos/GIFs with AI-generated image tags
-  └── BookmarkCategory — category assignments with confidence scores
+  ├── MediaItem   — images / videos / GIFs with AI-generated image tags
+  └── BookmarkCategory — category assignments with confidence scores (0–1)
 
-Category          — name, slug, color, description
-Setting           — key-value store for API keys and model preferences
+Category          — name, slug, hex color, AI-readable description
+Setting           — key-value store (API keys, model preferences)
+ImportJob         — tracks import file status and progress
 ```
 
 ---
@@ -247,14 +299,15 @@ Setting           — key-value store for API keys and model preferences
 
 | Technology | Role |
 |------------|------|
-| [Next.js 15](https://nextjs.org) | Full-stack React framework (App Router) |
-| [TypeScript](https://www.typescriptlang.org) | Type safety throughout |
-| [Prisma 7](https://www.prisma.io) | ORM for SQLite |
-| [SQLite](https://sqlite.org) | Local database — no setup required |
+| [Next.js 15](https://nextjs.org) | Full-stack framework (App Router) |
+| [TypeScript 5](https://www.typescriptlang.org) | Type safety throughout |
+| [Prisma 7](https://www.prisma.io) | ORM + migrations |
+| [SQLite](https://sqlite.org) | Local database — zero setup |
 | [Tailwind CSS v4](https://tailwindcss.com) | Styling |
-| [Anthropic API](https://anthropic.com) | Vision analysis, semantic tagging, categorization |
+| [Anthropic SDK](https://anthropic.com) | Vision, semantic tagging, categorization, search |
 | [React Flow](https://reactflow.dev) | Interactive mindmap graph |
 | [Radix UI](https://www.radix-ui.com) | Accessible UI primitives |
+| [JSZip](https://stuk.github.io/jszip/) | Category ZIP export |
 | [Lucide React](https://lucide.dev) | Icons |
 
 ---
@@ -265,50 +318,49 @@ Setting           — key-value store for API keys and model preferences
 # Install dependencies
 npm install
 
-# Generate Prisma client
-npx prisma generate
-
-# Push schema to database
+# Create database (runs once)
 npx prisma db push
 
-# Run development server
+# Start development server
 npm run dev
 
 # Type check
 npx tsc --noEmit
 
-# Open Prisma Studio (database GUI)
+# Open database GUI
 npx prisma studio
+
+# Build for production
+npm run build && npm start
 ```
 
-### Adding Categories
+### Customizing Categories
 
-Edit the `DEFAULT_CATEGORIES` array in `lib/categorizer.ts`. Each category needs:
-- `name` — display name
-- `slug` — URL-safe identifier
-- `color` — hex color for the UI
-- `description` — natural language description used in AI prompts (the more detailed, the better)
+Edit `DEFAULT_CATEGORIES` in `lib/categorizer.ts`. Each entry needs:
 
----
+```ts
+{
+  name: 'My Category',       // Display name
+  slug: 'my-category',       // URL-safe identifier (must be unique)
+  color: '#6366f1',          // Hex color shown in UI
+  description: '...',        // Natural language description — used verbatim in AI prompts
+}
+```
 
-## Contributing
+The `description` field directly shapes how the AI classifies bookmarks. Be specific.
 
-Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+### Adding Known Tools
 
-**Good first issues:**
-- Add more known tool domains to `KNOWN_TOOL_DOMAINS` in `lib/rawjson-extractor.ts`
-- Add more default categories in `lib/categorizer.ts`
-- Improve the AI prompts for better categorization accuracy
-- Add support for additional import formats
+Add domain strings to `KNOWN_TOOL_DOMAINS` in `lib/rawjson-extractor.ts` to have the entity extractor automatically recognize links to those tools in tweet data — no API cost.
 
 ---
 
 ## Privacy
 
 - All data is stored **locally** in a SQLite file on your machine
-- The only external calls are to the Anthropic API (image data + tweet text for analysis)
-- No telemetry, no tracking, no accounts
-- Your bookmarks never touch any third-party server except Anthropic's API
+- The only external calls are to the AI provider you configure (tweet text + image data)
+- No telemetry, no tracking, no accounts required
+- Your bookmarks never touch any third-party server except your configured AI endpoint
 
 ---
 
@@ -319,5 +371,5 @@ MIT — see [LICENSE](LICENSE)
 ---
 
 <div align="center">
-  <p>Built with ❤️ for people who actually use their bookmarks</p>
+  <p>Built by <a href="https://x.com/viperr">@viperr</a> · Self-hosted · No extensions · No cloud</p>
 </div>

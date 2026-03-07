@@ -97,6 +97,20 @@ ANTHROPIC_API_KEY=sk-ant-...              # optional if Claude CLI is signed in
 ANTHROPIC_BASE_URL=http://localhost:8080  # optional — for local proxies
 ```
 
+## CLI for AI Agents
+
+`cli/siftly.ts` provides direct database access without the Next.js server. Outputs JSON (pretty-printed on TTY, compact when piped). Must run from project root.
+
+```bash
+npx tsx cli/siftly.ts stats                          # Library statistics
+npx tsx cli/siftly.ts categories                     # Categories with counts
+npx tsx cli/siftly.ts search "AI agents"             # FTS5 keyword search
+npx tsx cli/siftly.ts list --limit 5                 # Recent bookmarks
+npx tsx cli/siftly.ts list --source like --category ai-resources --sort oldest
+npx tsx cli/siftly.ts show <id|tweetId>              # Full bookmark detail
+npm run siftly -- stats                              # Alternative via npm script
+```
+
 ## Common Tasks
 
 ### Run the AI pipeline manually

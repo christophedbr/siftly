@@ -34,6 +34,40 @@ export async function POST() {
     );
   }
 
+  // Debug: test token refresh directly
+  const cid = process.env.X_CLIENT_ID!;
+  const cs = process.env.X_CLIENT_SECRET!;
+  const rt = process.env.X_REFRESH_TOKEN!;
+  const authHeader = `Basic ${btoa(`${cid}:${cs}`)}`;
+
+  const testRes = await fetch("https://api.twitter.com/2/oauth2/token", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Authorization: authHeader,
+    },
+    body: new URLSearchParams({
+      grant_type: "refresh_token",
+      refresh_token: rt,
+      client_id: cid,
+    }),
+  });
+
+  const testData = await testRes.json();
+  if (!testRes.ok) {
+    return NextResponse.json(
+      {
+        error: "Direct refresh test failed",
+        status: testRes.status,
+        data: testData,
+        authHeaderPreview: authHeader.slice(0, 20) + "...",
+        usedBtoa: true,
+      },
+      { status: 500 },
+    );
+  }
+
+  // If debug test passes, proceed with actual sync
   try {
     const result = await syncFromXApi();
     return NextResponse.json(result);

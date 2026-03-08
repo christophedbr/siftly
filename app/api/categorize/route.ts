@@ -330,9 +330,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           });
           if (!bm) return;
 
-          // Vision: analyze any untagged media items (requires Anthropic client for multimodal)
+          // Vision: analyze any untagged media items (requires Anthropic multimodal API)
+          // Skip when using OpenAI to avoid unnecessary Anthropic costs
           let anyVisionRan = false;
-          if (client) {
+          if (client && provider !== "openai") {
             for (const media of bm.mediaItems) {
               if (shouldAbort()) return;
               if (media.imageTags !== null) continue;

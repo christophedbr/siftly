@@ -15,7 +15,13 @@ let tokenExpiresAt = 0;
 async function refreshAccessToken(): Promise<string> {
   const clientId = process.env.X_CLIENT_ID;
   const clientSecret = process.env.X_CLIENT_SECRET;
-  const refreshToken = process.env.X_REFRESH_TOKEN;
+
+  // Use DB-stored token (rotated) if available, else fall back to env
+  const dbToken = await prisma.setting
+    .findUnique({ where: { key: "x_refresh_token_latest" } })
+    .then((s) => s?.value)
+    .catch(() => null);
+  const refreshToken = dbToken || process.env.X_REFRESH_TOKEN;
 
   if (!clientId || !refreshToken) {
     throw new Error(
@@ -23,10 +29,17 @@ async function refreshAccessToken(): Promise<string> {
     );
   }
 
-  // PKCE public client: send client_id in body, no Basic auth
+  // Confidential client: Basic auth + client_id in body (covers both app types)
+  const headers: Record<string, string> = {
+    "Content-Type": "application/x-www-form-urlencoded",
+  };
+  if (clientSecret) {
+    headers.Authorization = `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`;
+  }
+
   const res = await fetch("https://api.twitter.com/2/oauth2/token", {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    headers,
     body: new URLSearchParams({
       grant_type: "refresh_token",
       refresh_token: refreshToken,

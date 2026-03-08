@@ -166,8 +166,10 @@ export async function syncFromXApi(): Promise<{
   const token = await getAccessToken();
   const userId = await getMyUserId(token);
 
+  // Fetch small pages — stop as soon as we hit a full page of known bookmarks.
+  // The API returns newest-first, so new bookmarks are always on page 1.
   const params = new URLSearchParams({
-    max_results: "100",
+    max_results: "20",
     "tweet.fields": "created_at,entities,author_id",
     "user.fields": "username,name",
     expansions: "author_id",
@@ -177,7 +179,7 @@ export async function syncFromXApi(): Promise<{
   let skipped = 0;
   let paginationToken: string | null = null;
   let pages = 0;
-  const maxPages = 8;
+  const maxPages = 5;
 
   do {
     const url = `/2/users/${userId}/bookmarks?${params}${
@@ -186,7 +188,6 @@ export async function syncFromXApi(): Promise<{
     const { status, data } = await xGet(url, token);
 
     if (status === 401) {
-      // Token expired mid-sync, refresh and retry
       const newToken = await refreshAccessToken();
       const retry = await xGet(url, newToken);
       if (retry.status !== 200) {
@@ -201,6 +202,8 @@ export async function syncFromXApi(): Promise<{
     const tweets: XTweet[] = data.data ?? [];
     const users: XUser[] = data.includes?.users ?? [];
     const userMap = new Map(users.map((u: XUser) => [u.id, u]));
+
+    let pageImported = 0;
 
     for (const tweet of tweets) {
       const exists = await prisma.bookmark.findUnique({
@@ -233,8 +236,12 @@ export async function syncFromXApi(): Promise<{
         },
       });
 
+      pageImported++;
       imported++;
     }
+
+    // If an entire page was already known, no point fetching more
+    if (pageImported === 0 && tweets.length > 0) break;
 
     paginationToken = data.meta?.next_token ?? null;
     pages++;

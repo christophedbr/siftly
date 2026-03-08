@@ -30,7 +30,7 @@ Examples of unacceptable behavior:
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported to the project maintainers. DM [@viperrcrypto](https://twitter.com/viperrcrypto) on X.
+reported to the project maintainers. DM [@viperr](https://x.com/viperr) on X.
 
 All complaints will be reviewed and investigated promptly and fairly.
 

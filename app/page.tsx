@@ -1,29 +1,46 @@
-export const dynamic = 'force-dynamic'
+export const dynamic = "force-dynamic";
 
-import Link from 'next/link'
-import { BookmarkIcon, Tag, Image, Layers, Upload, Sparkles, Search, ArrowRight, TrendingUp, Bookmark } from 'lucide-react'
-import prisma from '@/lib/db'
-import BookmarkCard from '@/components/bookmark-card'
-import type { BookmarkWithMedia } from '@/lib/types'
+import Link from "next/link";
+import {
+  BookmarkIcon,
+  Tag,
+  Image,
+  Layers,
+  Upload,
+  Sparkles,
+  Search,
+  ArrowRight,
+  TrendingUp,
+  Bookmark,
+} from "lucide-react";
+import prisma from "@/lib/db";
+import BookmarkCard from "@/components/bookmark-card";
+import SyncButton from "@/components/sync-button";
+import type { BookmarkWithMedia } from "@/lib/types";
 
 const RECENT_QUERY = {
   take: 6,
-  orderBy: [{ tweetCreatedAt: 'desc' as const }, { importedAt: 'desc' as const }],
+  orderBy: [
+    { tweetCreatedAt: "desc" as const },
+    { importedAt: "desc" as const },
+  ],
   include: {
-    mediaItems: { select: { id: true, type: true, url: true, thumbnailUrl: true } },
+    mediaItems: {
+      select: { id: true, type: true, url: true, thumbnailUrl: true },
+    },
     categories: {
       include: {
         category: { select: { id: true, name: true, slug: true, color: true } },
       },
     },
   },
-}
+};
 
 const TOP_CATS_QUERY = {
   include: { _count: { select: { bookmarks: true } } },
-  orderBy: { bookmarks: { _count: 'desc' as const } },
+  orderBy: { bookmarks: { _count: "desc" as const } },
   take: 10,
-} as const
+} as const;
 
 async function queryDashboard() {
   return Promise.all([
@@ -33,15 +50,24 @@ async function queryDashboard() {
     prisma.bookmark.count({ where: { categories: { none: {} } } }),
     prisma.bookmark.findMany(RECENT_QUERY),
     prisma.category.findMany(TOP_CATS_QUERY),
-    prisma.bookmark.count({ where: { source: 'bookmark' } }),
-    prisma.bookmark.count({ where: { source: 'like' } }),
-  ])
+    prisma.bookmark.count({ where: { source: "bookmark" } }),
+    prisma.bookmark.count({ where: { source: "like" } }),
+  ]);
 }
 
-type QueryResult = Awaited<ReturnType<typeof queryDashboard>>
+type QueryResult = Awaited<ReturnType<typeof queryDashboard>>;
 
 function buildDashboardData(result: QueryResult) {
-  const [totalBookmarks, totalCategories, totalMedia, uncategorizedCount, recentRaw, catsRaw, bookmarkSourceCount, likeSourceCount] = result
+  const [
+    totalBookmarks,
+    totalCategories,
+    totalMedia,
+    uncategorizedCount,
+    recentRaw,
+    catsRaw,
+    bookmarkSourceCount,
+    likeSourceCount,
+  ] = result;
 
   const recentBookmarks: BookmarkWithMedia[] = recentRaw.map((b) => ({
     id: b.id,
@@ -59,7 +85,7 @@ function buildDashboardData(result: QueryResult) {
       color: bc.category.color,
       confidence: null,
     })),
-  }))
+  }));
 
   return {
     totalBookmarks,
@@ -75,7 +101,7 @@ function buildDashboardData(result: QueryResult) {
       color: c.color,
       count: c._count.bookmarks,
     })),
-  }
+  };
 }
 
 const EMPTY_DASHBOARD = {
@@ -86,45 +112,59 @@ const EMPTY_DASHBOARD = {
   totalMedia: 0,
   uncategorizedCount: 0,
   recentBookmarks: [] as BookmarkWithMedia[],
-  topCategories: [] as { name: string; slug: string; color: string; count: number }[],
-}
+  topCategories: [] as {
+    name: string;
+    slug: string;
+    color: string;
+    count: number;
+  }[],
+};
 
 async function getDashboardData() {
   try {
-    const result = await queryDashboard()
-    return buildDashboardData(result)
+    const result = await queryDashboard();
+    return buildDashboardData(result);
   } catch {
-    return EMPTY_DASHBOARD
+    return EMPTY_DASHBOARD;
   }
 }
 
 function getGreeting(): string {
-  const hour = new Date().getHours()
-  if (hour < 12) return 'Good morning'
-  if (hour < 17) return 'Good afternoon'
-  return 'Good evening'
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
 }
 
 function formatDate(): string {
-  return new Date().toLocaleDateString('en-US', {
-    weekday: 'long',
-    month: 'long',
-    day: 'numeric',
-  })
+  return new Date().toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  });
 }
 
 interface StatCardProps {
-  label: string
-  value: number
-  icon: React.ComponentType<{ size?: number; className?: string }>
-  iconColor: string
-  iconBg: string
-  borderColor: string
-  trend?: string
-  href?: string
+  label: string;
+  value: number;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  iconColor: string;
+  iconBg: string;
+  borderColor: string;
+  trend?: string;
+  href?: string;
 }
 
-function StatCard({ label, value, icon: Icon, iconColor, iconBg, borderColor, trend, href }: StatCardProps) {
+function StatCard({
+  label,
+  value,
+  icon: Icon,
+  iconColor,
+  iconBg,
+  borderColor,
+  trend,
+  href,
+}: StatCardProps) {
   const inner = (
     <>
       <div className="flex items-start justify-between mb-3">
@@ -138,50 +178,62 @@ function StatCard({ label, value, icon: Icon, iconColor, iconBg, borderColor, tr
           </span>
         )}
       </div>
-      <p className="text-3xl font-bold text-zinc-100 mb-1 tracking-tight">{value.toLocaleString()}</p>
+      <p className="text-3xl font-bold text-zinc-100 mb-1 tracking-tight">
+        {value.toLocaleString()}
+      </p>
       <p className="text-sm text-zinc-500">{label}</p>
     </>
-  )
-  const cls = `bg-zinc-900 border border-zinc-800 rounded-2xl p-5 hover:border-zinc-700 transition-all duration-200 relative overflow-hidden border-t-2 ${borderColor} ${href ? 'cursor-pointer hover:bg-zinc-800/60' : ''}`
+  );
+  const cls = `bg-zinc-900 border border-zinc-800 rounded-2xl p-5 hover:border-zinc-700 transition-all duration-200 relative overflow-hidden border-t-2 ${borderColor} ${href ? "cursor-pointer hover:bg-zinc-800/60" : ""}`;
   if (href) {
-    return <Link href={href} className={cls}>{inner}</Link>
+    return (
+      <Link href={href} className={cls}>
+        {inner}
+      </Link>
+    );
   }
-  return <div className={cls}>{inner}</div>
+  return <div className={cls}>{inner}</div>;
 }
 
 export default async function DashboardPage() {
-  const data = await getDashboardData()
+  const data = await getDashboardData();
 
   if (data.totalBookmarks === 0) {
-    return <EmptyState />
+    return <EmptyState />;
   }
 
-  const categorizedCount = data.totalBookmarks - data.uncategorizedCount
+  const categorizedCount = data.totalBookmarks - data.uncategorizedCount;
 
   return (
     <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-8">
-
       {/* Hero Section */}
       <div>
-        <p className="text-sm text-zinc-500 mb-1 uppercase tracking-widest font-medium">{formatDate()}</p>
+        <p className="text-sm text-zinc-500 mb-1 uppercase tracking-widest font-medium">
+          {formatDate()}
+        </p>
         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
           <div>
             <h1 className="text-3xl md:text-4xl font-bold text-zinc-100">
               {getGreeting()} <span className="text-indigo-400">&#128075;</span>
             </h1>
             <p className="text-zinc-400 mt-1.5">
-              You have{' '}
-              <span className="text-zinc-100 font-semibold">{data.totalBookmarks.toLocaleString()}</span>{' '}
+              You have{" "}
+              <span className="text-zinc-100 font-semibold">
+                {data.totalBookmarks.toLocaleString()}
+              </span>{" "}
               tweets saved and ready to explore.
               {data.likeSourceCount > 0 && (
                 <span className="text-zinc-500">
-                  {' '}({data.bookmarkSourceCount.toLocaleString()} bookmarks, {data.likeSourceCount.toLocaleString()} likes)
+                  {" "}
+                  ({data.bookmarkSourceCount.toLocaleString()} bookmarks,{" "}
+                  {data.likeSourceCount.toLocaleString()} likes)
                 </span>
               )}
             </p>
           </div>
           {/* Quick Actions */}
           <div className="flex items-center gap-2 flex-wrap">
+            <SyncButton />
             <Link
               href="/import"
               className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl transition-colors"
@@ -210,7 +262,11 @@ export default async function DashboardPage() {
       {/* Stat Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
-          label={data.likeSourceCount > 0 ? `${data.bookmarkSourceCount.toLocaleString()} bookmarks · ${data.likeSourceCount.toLocaleString()} likes` : 'Total Bookmarks'}
+          label={
+            data.likeSourceCount > 0
+              ? `${data.bookmarkSourceCount.toLocaleString()} bookmarks · ${data.likeSourceCount.toLocaleString()} likes`
+              : "Total Bookmarks"
+          }
           value={data.totalBookmarks}
           icon={BookmarkIcon}
           iconColor="text-indigo-400"
@@ -249,8 +305,12 @@ export default async function DashboardPage() {
         <section>
           <div className="flex items-center justify-between mb-5">
             <div>
-              <p className="text-xs text-zinc-500 uppercase tracking-widest font-medium mb-0.5">Latest</p>
-              <h2 className="text-xl font-semibold text-zinc-100">Recently Added</h2>
+              <p className="text-xs text-zinc-500 uppercase tracking-widest font-medium mb-0.5">
+                Latest
+              </p>
+              <h2 className="text-xl font-semibold text-zinc-100">
+                Recently Added
+              </h2>
             </div>
             <Link
               href="/bookmarks"
@@ -275,8 +335,12 @@ export default async function DashboardPage() {
         <section className="pb-8">
           <div className="flex items-center justify-between mb-5">
             <div>
-              <p className="text-xs text-zinc-500 uppercase tracking-widest font-medium mb-0.5">Browse by topic</p>
-              <h2 className="text-xl font-semibold text-zinc-100">Top Categories</h2>
+              <p className="text-xs text-zinc-500 uppercase tracking-widest font-medium mb-0.5">
+                Browse by topic
+              </p>
+              <h2 className="text-xl font-semibold text-zinc-100">
+                Top Categories
+              </h2>
             </div>
             <Link
               href="/categories"
@@ -298,7 +362,9 @@ export default async function DashboardPage() {
                   className="shrink-0 transition-colors"
                   style={{ color: cat.color, fill: cat.color }}
                 />
-                <span className="text-zinc-300 group-hover:text-zinc-100 transition-colors font-medium">{cat.name}</span>
+                <span className="text-zinc-300 group-hover:text-zinc-100 transition-colors font-medium">
+                  {cat.name}
+                </span>
                 <span className="text-zinc-500 text-xs tabular-nums">
                   {cat.count}
                 </span>
@@ -308,7 +374,7 @@ export default async function DashboardPage() {
         </section>
       )}
     </div>
-  )
+  );
 }
 
 function EmptyState() {
@@ -318,10 +384,12 @@ function EmptyState() {
         <div className="flex items-center justify-center w-20 h-20 rounded-3xl bg-indigo-500/10 mx-auto mb-6">
           <BookmarkIcon size={36} className="text-indigo-400 opacity-80" />
         </div>
-        <h2 className="text-2xl font-bold text-zinc-100 mb-3">No bookmarks yet</h2>
+        <h2 className="text-2xl font-bold text-zinc-100 mb-3">
+          No bookmarks yet
+        </h2>
         <p className="text-zinc-400 mb-8 leading-relaxed">
-          Import your Twitter bookmarks to get started. Once imported, use AI to automatically
-          categorize and organize them.
+          Import your Twitter bookmarks to get started. Once imported, use AI to
+          automatically categorize and organize them.
         </p>
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
           <Link
@@ -340,5 +408,5 @@ function EmptyState() {
         </div>
       </div>
     </div>
-  )
+  );
 }

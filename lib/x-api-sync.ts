@@ -17,21 +17,20 @@ async function refreshAccessToken(): Promise<string> {
   const clientSecret = process.env.X_CLIENT_SECRET;
   const refreshToken = process.env.X_REFRESH_TOKEN;
 
-  if (!clientId || !clientSecret || !refreshToken) {
+  if (!clientId || !refreshToken) {
     throw new Error(
-      "X API credentials not configured (X_CLIENT_ID, X_CLIENT_SECRET, X_REFRESH_TOKEN)",
+      "X API credentials not configured (X_CLIENT_ID, X_REFRESH_TOKEN)",
     );
   }
 
+  // PKCE public client: send client_id in body, no Basic auth
   const res = await fetch("https://api.twitter.com/2/oauth2/token", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`,
-    },
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       grant_type: "refresh_token",
       refresh_token: refreshToken,
+      client_id: clientId,
     }),
   });
 
@@ -194,9 +193,5 @@ export async function syncFromXApi(): Promise<{
 }
 
 export function isXApiConfigured(): boolean {
-  return !!(
-    process.env.X_CLIENT_ID &&
-    process.env.X_CLIENT_SECRET &&
-    process.env.X_REFRESH_TOKEN
-  );
+  return !!(process.env.X_CLIENT_ID && process.env.X_REFRESH_TOKEN);
 }

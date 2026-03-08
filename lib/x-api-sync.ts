@@ -125,6 +125,7 @@ async function getAccessToken(): Promise<string> {
 async function xGet(endpoint: string, token: string) {
   const res = await fetch(`https://api.twitter.com${endpoint}`, {
     headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
   });
   const data = await res.json();
   return { status: res.status, data };

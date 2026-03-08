@@ -1,11 +1,24 @@
 import { NextResponse } from "next/server";
 import { syncFromXApi, isXApiConfigured } from "@/lib/x-api-sync";
 
-/** GET — check X API connection status */
+/** GET — check X API connection status + debug */
 export async function GET() {
+  const cid = process.env.X_CLIENT_ID ?? "";
+  const cs = process.env.X_CLIENT_SECRET ?? "";
+  const rt = process.env.X_REFRESH_TOKEN ?? "";
   return NextResponse.json({
     configured: isXApiConfigured(),
     method: "oauth2",
+    debug: {
+      hasClientId: cid.length > 0,
+      clientIdLen: cid.length,
+      clientIdPreview: cid.slice(0, 6),
+      hasSecret: cs.length > 0,
+      secretLen: cs.length,
+      hasRefresh: rt.length > 0,
+      refreshLen: rt.length,
+      refreshPreview: rt.slice(0, 6),
+    },
   });
 }
 

@@ -3,14 +3,55 @@
  *
  * Uses the official X API v2 bookmarks endpoint with PKCE OAuth tokens.
  * Tokens are stored as env vars (X_CLIENT_ID, X_CLIENT_SECRET, X_REFRESH_TOKEN).
+ * Token refresh uses Node.js https module to bypass Next.js fetch patching.
  */
 
+import https from "https";
 import prisma from "@/lib/db";
 
 // ── Token management ────────────────────────────────────────────────────────
 
 let cachedAccessToken: string | null = null;
 let tokenExpiresAt = 0;
+
+/** Raw HTTPS POST — bypasses Next.js fetch patching that strips Authorization headers */
+function httpsPost(
+  url: string,
+  headers: Record<string, string>,
+  body: string,
+): Promise<{ status: number; data: Record<string, unknown> }> {
+  const parsed = new URL(url);
+  return new Promise((resolve, reject) => {
+    const req = https.request(
+      {
+        hostname: parsed.hostname,
+        path: parsed.pathname,
+        method: "POST",
+        headers: {
+          ...headers,
+          "Content-Length": Buffer.byteLength(body).toString(),
+        },
+      },
+      (res) => {
+        let raw = "";
+        res.on("data", (chunk: Buffer) => (raw += chunk.toString()));
+        res.on("end", () => {
+          try {
+            resolve({
+              status: res.statusCode ?? 500,
+              data: JSON.parse(raw),
+            });
+          } catch {
+            reject(new Error(`Invalid JSON from ${url}: ${raw.slice(0, 200)}`));
+          }
+        });
+      },
+    );
+    req.on("error", reject);
+    req.write(body);
+    req.end();
+  });
+}
 
 async function refreshAccessToken(): Promise<string> {
   const clientId = process.env.X_CLIENT_ID;
@@ -29,7 +70,7 @@ async function refreshAccessToken(): Promise<string> {
     );
   }
 
-  // Confidential client: Basic auth + client_id in body (covers both app types)
+  // Confidential client: Basic auth + client_id in body
   const headers: Record<string, string> = {
     "Content-Type": "application/x-www-form-urlencoded",
   };
@@ -37,30 +78,35 @@ async function refreshAccessToken(): Promise<string> {
     headers.Authorization = `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`;
   }
 
-  const res = await fetch("https://api.twitter.com/2/oauth2/token", {
-    method: "POST",
-    headers,
-    body: new URLSearchParams({
-      grant_type: "refresh_token",
-      refresh_token: refreshToken,
-      client_id: clientId,
-    }),
-  });
+  const body = new URLSearchParams({
+    grant_type: "refresh_token",
+    refresh_token: refreshToken,
+    client_id: clientId,
+  }).toString();
 
-  const data = await res.json();
-  if (!res.ok || !data.access_token) {
+  const { status, data } = await httpsPost(
+    "https://api.twitter.com/2/oauth2/token",
+    headers,
+    body,
+  );
+
+  if (status !== 200 || !data.access_token) {
     throw new Error(`Token refresh failed: ${JSON.stringify(data)}`);
   }
 
   cachedAccessToken = data.access_token as string;
-  tokenExpiresAt = Date.now() + (data.expires_in ?? 7200) * 1000 - 60_000; // 1 min buffer
+  tokenExpiresAt =
+    Date.now() + ((data.expires_in as number) ?? 7200) * 1000 - 60_000;
 
-  // If we got a new refresh token, store it in the DB for persistence
+  // Store rotated refresh token in DB for persistence
   if (data.refresh_token && data.refresh_token !== refreshToken) {
     await prisma.setting.upsert({
       where: { key: "x_refresh_token_latest" },
-      update: { value: data.refresh_token },
-      create: { key: "x_refresh_token_latest", value: data.refresh_token },
+      update: { value: data.refresh_token as string },
+      create: {
+        key: "x_refresh_token_latest",
+        value: data.refresh_token as string,
+      },
     });
   }
 

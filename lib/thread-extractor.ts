@@ -7,18 +7,8 @@
  */
 
 import { isXApiConfigured, getAccessToken, xGet } from "@/lib/x-api-sync";
-
-// ── Raw JSON helpers ──────────────────────────────────────────────────────
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function safeGet(obj: any, ...keys: string[]): any {
-  let cur = obj;
-  for (const k of keys) {
-    if (cur == null || typeof cur !== "object") return undefined;
-    cur = cur[k];
-  }
-  return cur;
-}
+import { safeGet } from "@/lib/rawjson-extractor";
+import { shouldSkipUrl } from "@/lib/link-content";
 
 /**
  * Extract conversation ID from a thread-starter tweet's raw JSON.
@@ -53,24 +43,6 @@ function isRateLimited(): boolean {
     _windowStart = now;
   }
   return _callCount >= MAX_CALLS_PER_WINDOW;
-}
-
-// ── URL filtering ─────────────────────────────────────────────────────────
-
-const SKIP_DOMAINS = new Set([
-  "x.com",
-  "twitter.com",
-  "t.co",
-  "pic.twitter.com",
-]);
-
-function isSkipDomain(url: string): boolean {
-  try {
-    const { hostname } = new URL(url);
-    return SKIP_DOMAINS.has(hostname.replace(/^www\./, ""));
-  } catch {
-    return true;
-  }
 }
 
 // ── Thread context fetching ───────────────────────────────────────────────
@@ -146,7 +118,7 @@ export async function fetchThreadContext(
           expanded_url?: string;
         }[]) ?? [];
       for (const u of tweetUrls) {
-        if (u.expanded_url && !isSkipDomain(u.expanded_url)) {
+        if (u.expanded_url && !shouldSkipUrl(u.expanded_url)) {
           urls.push(u.expanded_url);
         }
       }

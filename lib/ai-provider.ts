@@ -68,21 +68,30 @@ function createOpenAIClient(dbKey?: string): OpenAI {
   return new OpenAI({ apiKey });
 }
 
+let _openaiClientCache: OpenAI | null = null;
+let _openaiClientKey = "";
+
 /**
- * Get a cached OpenAI client (avoids DB lookup per call during pipeline runs).
+ * Get a cached OpenAI client (avoids DB lookup + allocation per call during pipeline runs).
  */
 export async function getCachedOpenAIClient(): Promise<OpenAI> {
   const key = await getOpenAIKey();
   if (!key) throw new Error("No OpenAI API key configured.");
-  return new OpenAI({ apiKey: key });
+  if (!_openaiClientCache || _openaiClientKey !== key) {
+    _openaiClientCache = new OpenAI({ apiKey: key });
+    _openaiClientKey = key;
+  }
+  return _openaiClientCache;
 }
 
 /**
  * Pre-flight check: verify the configured provider has an API key before
  * starting a long pipeline. Returns an error message or null if OK.
  */
-export async function preflightProviderCheck(): Promise<string | null> {
-  const provider = await getAIProvider();
+export async function preflightProviderCheck(
+  resolvedProvider?: AIProvider,
+): Promise<string | null> {
+  const provider = resolvedProvider ?? (await getAIProvider());
   if (provider === "openai") {
     const key = await getOpenAIKey();
     if (!key) return "No OpenAI API key configured. Go to Settings to add one.";

@@ -15,6 +15,7 @@ import {
   runWithConcurrency,
   enrichBatchSemanticTags,
   BookmarkForEnrichment,
+  ENRICH_BATCH_SIZE,
 } from "@/lib/vision-analyzer";
 import { backfillEntities } from "@/lib/rawjson-extractor";
 import { rebuildFts } from "@/lib/fts";
@@ -115,7 +116,6 @@ export async function DELETE(): Promise<NextResponse> {
 
 const PIPELINE_WORKERS = 20;
 const CAT_BATCH_SIZE = 25;
-const ENRICH_BATCH_SIZE = 5;
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   if (getState().status === "running" || getState().status === "stopping") {
@@ -147,7 +147,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   // Pre-flight: verify the configured provider has a working API key
   const provider = await getAIProvider();
-  const preflightError = await preflightProviderCheck();
+  const preflightError = await preflightProviderCheck(provider);
   if (preflightError) {
     // Allow Anthropic CLI fallback — only hard-fail for OpenAI missing key
     if (provider === "openai") {

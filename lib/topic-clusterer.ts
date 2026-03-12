@@ -6,8 +6,7 @@
  */
 
 import prisma from "@/lib/db";
-import { getCachedOpenAIClient } from "@/lib/ai-provider";
-import { chatComplete } from "@/lib/ai-provider";
+import { getCachedOpenAIClient, chatComplete } from "@/lib/ai-provider";
 import * as fs from "fs/promises";
 import * as path from "path";
 
@@ -30,11 +29,6 @@ export interface EnrichedBookmark {
     mentions?: string[];
     tools?: string[];
   };
-}
-
-export interface TopicCluster {
-  bookmarks: EnrichedBookmark[];
-  centroid: number[];
 }
 
 export interface GeneratedTopic {
@@ -493,9 +487,19 @@ const DEFAULT_OUTPUT_PATH = path.join(
   "Documents/GitHub/life-os/research/topics",
 );
 
+export type TopicPhase =
+  | "starting"
+  | "loading"
+  | "embedding"
+  | "clustering"
+  | "synthesizing"
+  | "linking"
+  | "writing"
+  | null;
+
 export interface TopicGenerationProgress {
   status: "idle" | "running" | "stopping";
-  phase: string | null;
+  phase: TopicPhase;
   done: number;
   total: number;
   lastError: string | null;

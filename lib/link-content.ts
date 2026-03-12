@@ -84,7 +84,7 @@ const SKIP_DOMAINS = new Set([
   "pic.twitter.com",
 ]);
 
-function shouldSkipUrl(url: string): boolean {
+export function shouldSkipUrl(url: string): boolean {
   try {
     const { hostname } = new URL(url);
     return SKIP_DOMAINS.has(hostname.replace(/^www\./, ""));
@@ -119,10 +119,11 @@ async function fetchLinkMeta(url: string): Promise<LinkSummary | null> {
 
     let html = "";
     let bytes = 0;
+    const decoder = new TextDecoder();
     while (bytes < 50_000) {
       const { done, value } = await reader.read();
       if (done) break;
-      html += new TextDecoder().decode(value);
+      html += decoder.decode(value, { stream: true });
       bytes += value.length;
       if (html.includes("</head>")) break;
     }

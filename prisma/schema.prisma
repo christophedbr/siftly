@@ -23,6 +23,7 @@ model Bookmark {
   source          String    @default("bookmark")  // "bookmark" | "like"
   mediaItems    MediaItem[]
   categories    BookmarkCategory[]
+  embedding     BookmarkEmbedding?
 
   @@index([authorHandle])
   @@index([tweetCreatedAt])
@@ -74,6 +75,24 @@ model ImportJob {
   errorMessage   String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+}
+
+model BookmarkEmbedding {
+  id         String   @id @default(cuid())
+  bookmarkId String   @unique
+  embedding  String   // JSON array of floats (1536 dimensions for text-embedding-3-small)
+  embeddedAt DateTime @default(now())
+  bookmark   Bookmark @relation(fields: [bookmarkId], references: [id], onDelete: Cascade)
+}
+
+model ResearchTopic {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  summary     String
+  themes      String?  // JSON array of theme strings
+  bookmarkIds String   // JSON array of bookmark IDs
+  generatedAt DateTime @default(now())
 }
 
 model Setting {

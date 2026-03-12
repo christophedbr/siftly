@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { syncFromXApi, isXApiConfigured } from "@/lib/x-api-sync";
+import { triggerCategorizePipeline } from "@/lib/pipeline-trigger";
 
 /** GET — check X API connection status */
 export async function GET() {
@@ -20,6 +21,12 @@ export async function POST() {
 
   try {
     const result = await syncFromXApi();
+
+    // Auto-trigger categorization → enrichment → research topics
+    if (result.imported > 0) {
+      triggerCategorizePipeline();
+    }
+
     return NextResponse.json(result);
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Sync failed";

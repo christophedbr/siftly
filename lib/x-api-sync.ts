@@ -113,7 +113,7 @@ async function refreshAccessToken(): Promise<string> {
   return cachedAccessToken!;
 }
 
-async function getAccessToken(): Promise<string> {
+export async function getAccessToken(): Promise<string> {
   if (cachedAccessToken && Date.now() < tokenExpiresAt) {
     return cachedAccessToken;
   }
@@ -122,7 +122,7 @@ async function getAccessToken(): Promise<string> {
 
 // ── X API v2 calls ──────────────────────────────────────────────────────────
 
-async function xGet(endpoint: string, token: string) {
+export async function xGet(endpoint: string, token: string) {
   const res = await fetch(`https://api.twitter.com${endpoint}`, {
     headers: { Authorization: `Bearer ${token}` },
     cache: "no-store",

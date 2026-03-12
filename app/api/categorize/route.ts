@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import prisma from "@/lib/db";
 import { resolveAnthropicClient } from "@/lib/claude-cli-auth";
@@ -18,7 +18,19 @@ import {
 } from "@/lib/vision-analyzer";
 import { backfillEntities } from "@/lib/rawjson-extractor";
 import { rebuildFts } from "@/lib/fts";
-import { getAIProvider } from "@/lib/ai-provider";
+import {
+  getAIProvider,
+  preflightProviderCheck,
+  getCachedOpenAIClient,
+} from "@/lib/ai-provider";
+import { fetchLinkSummaries } from "@/lib/link-content";
+import { generateResearchTopics } from "@/lib/topic-clusterer";
+import {
+  extractConversationId,
+  fetchThreadContext,
+} from "@/lib/thread-extractor";
+
+export const maxDuration = 300;
 
 type Stage = "vision" | "entities" | "enrichment" | "categorize" | "parallel";
 
@@ -103,6 +115,7 @@ export async function DELETE(): Promise<NextResponse> {
 
 const PIPELINE_WORKERS = 20;
 const CAT_BATCH_SIZE = 25;
+const ENRICH_BATCH_SIZE = 5;
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   if (getState().status === "running" || getState().status === "stopping") {
@@ -131,6 +144,30 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   globalState.categorizationAbort = false;
+
+  // Pre-flight: verify the configured provider has a working API key
+  const provider = await getAIProvider();
+  const preflightError = await preflightProviderCheck();
+  if (preflightError) {
+    // Allow Anthropic CLI fallback — only hard-fail for OpenAI missing key
+    if (provider === "openai") {
+      setState({
+        status: "idle",
+        stage: null,
+        done: 0,
+        total: 0,
+        stageCounts: {
+          visionTagged: 0,
+          entitiesExtracted: 0,
+          enriched: 0,
+          categorized: 0,
+        },
+        lastError: null,
+        error: preflightError,
+      });
+      return NextResponse.json({ error: preflightError }, { status: 400 });
+    }
+  }
 
   let total = 0;
   try {
@@ -165,7 +202,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       await prisma.setting.findUnique({ where: { key: "anthropicApiKey" } })
     )?.value?.trim() || "";
 
-  void (async () => {
+  const capturedTotal = total;
+  const capturedBookmarkIds = bookmarkIds;
+  const capturedForce = force;
+
+  after(async () => {
     const counts = {
       visionTagged: 0,
       entitiesExtracted: 0,
@@ -174,9 +215,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     };
 
     try {
-      const provider = await getAIProvider();
-
-      // Anthropic client is optional — only needed for vision analysis
+      // Anthropic client is optional — only needed for Anthropic vision
       let client: Anthropic | null = null;
       try {
         client = resolveAnthropicClient({ dbKey: dbApiKey });
@@ -189,15 +228,27 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           console.error("No API key or CLI auth — skipping pipeline");
           return;
         }
-        // OpenAI provider: vision will be skipped, enrichment+categorization use chatComplete
         console.log(
-          "[pipeline] Using OpenAI provider — vision analysis skipped",
+          "[pipeline] Using OpenAI provider — vision via GPT-4o-mini",
         );
+      }
+
+      // Pre-build OpenAI client once for the whole pipeline (cached key)
+      let openaiClient: import("openai").default | null = null;
+      if (provider === "openai") {
+        try {
+          openaiClient = await getCachedOpenAIClient();
+        } catch (err) {
+          setState({
+            error: `OpenAI client failed: ${err instanceof Error ? err.message : String(err)}`,
+          });
+          return;
+        }
       }
 
       await seedDefaultCategories();
 
-      if (force) {
+      if (capturedForce) {
         await prisma.mediaItem.updateMany({
           where: { imageTags: "{}" },
           data: { imageTags: null },
@@ -221,13 +272,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         setState({ stageCounts: { ...counts } });
       }
 
-      // Stage 2: Parallel pipeline — vision + enrichment + categorize per bookmark
+      // Stage 2: Parallel pipeline — vision + link fetch → enrich queue → categorize queue
       if (!shouldAbort()) {
-        // Fetch all bookmark IDs to process
         let bookmarkIdsToProcess: string[];
-        if (bookmarkIds.length > 0) {
-          bookmarkIdsToProcess = bookmarkIds;
-        } else if (force) {
+        if (capturedBookmarkIds.length > 0) {
+          bookmarkIdsToProcess = capturedBookmarkIds;
+        } else if (capturedForce) {
           const all = await prisma.bookmark.findMany({
             select: { id: true },
             orderBy: { id: "asc" },
@@ -250,7 +300,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           stageCounts: { ...counts },
         });
 
-        // Load category metadata once (shared across all workers)
+        // Load category metadata once
         const dbCategories = await prisma.category.findMany({
           select: { slug: true, name: true, description: true },
         });
@@ -259,14 +309,77 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           dbCategories.map((c) => [c.slug, c.description?.trim() || c.name]),
         );
         const model = await getAnthropicModel();
+        const openaiVisionModel = "gpt-4o-mini";
 
-        // Shared categorization queue (JS single-threaded: splice is atomic vs async)
+        // ── Enrichment queue (batch of 5) ──────────────────────────────────
+        const enrichPending: BookmarkForEnrichment[] = [];
+        let enrichFlushing = false;
+
+        async function drainEnrichQueue(final = false): Promise<void> {
+          if (final) {
+            while (enrichFlushing) {
+              await new Promise<void>((r) => setTimeout(r, 50));
+            }
+          } else if (
+            enrichFlushing ||
+            enrichPending.length < ENRICH_BATCH_SIZE
+          ) {
+            return;
+          }
+
+          enrichFlushing = true;
+          try {
+            while (enrichPending.length > 0) {
+              if (!final && enrichPending.length < ENRICH_BATCH_SIZE) break;
+              const batch = enrichPending.splice(0, ENRICH_BATCH_SIZE);
+              if (batch.length === 0) break;
+              try {
+                const results = await enrichBatchSemanticTags(batch, client);
+                const resultMap = new Map(results.map((r) => [r.id, r]));
+
+                for (const b of batch) {
+                  const result = resultMap.get(b.id);
+                  if (result?.tags.length) {
+                    await prisma.bookmark.update({
+                      where: { id: b.id },
+                      data: {
+                        semanticTags: JSON.stringify(result.tags),
+                        enrichmentMeta: JSON.stringify({
+                          sentiment: result.sentiment,
+                          people: result.people,
+                          companies: result.companies,
+                        }),
+                      },
+                    });
+                    counts.enriched++;
+                    setState({ stageCounts: { ...counts } });
+                  }
+                }
+              } catch (err) {
+                console.warn(
+                  "[parallel] enrich batch error:",
+                  err instanceof Error ? err.message : err,
+                );
+                setState({
+                  lastError: `Enrichment: ${err instanceof Error ? err.message.slice(0, 150) : String(err)}`,
+                });
+              }
+
+              // Queue enriched IDs for categorization
+              for (const b of batch) catPending.push(b.id);
+              await drainCategorizeQueue();
+            }
+          } finally {
+            enrichFlushing = false;
+          }
+        }
+
+        // ── Categorization queue (batch of 25) ────────────────────────────
         const catPending: string[] = [];
         let catFlushing = false;
 
         async function drainCategorizeQueue(final = false): Promise<void> {
           if (final) {
-            // Wait for any in-progress flush before draining remainder
             while (catFlushing) {
               await new Promise<void>((resolve) => setTimeout(resolve, 50));
             }
@@ -316,6 +429,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
               text: true,
               semanticTags: true,
               entities: true,
+              rawJson: true,
+              authorHandle: true,
               mediaItems: {
                 where: { type: { in: ["photo", "gif", "video"] } },
                 select: {
@@ -330,40 +445,85 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           });
           if (!bm) return;
 
-          // Vision: analyze any untagged media items (requires Anthropic multimodal API)
-          // Skip when using OpenAI to avoid unnecessary Anthropic costs
+          // Vision: analyze untagged media items (works with both providers)
           let anyVisionRan = false;
-          if (client && provider !== "openai") {
-            for (const media of bm.mediaItems) {
-              if (shouldAbort()) return;
-              if (media.imageTags !== null) continue;
+          for (const media of bm.mediaItems) {
+            if (shouldAbort()) return;
+            if (media.imageTags !== null) continue;
+            try {
+              await analyzeItem(
+                {
+                  id: media.id,
+                  url: media.url,
+                  thumbnailUrl: media.thumbnailUrl,
+                  type: media.type,
+                },
+                client,
+                provider === "openai" ? openaiVisionModel : model,
+                {
+                  provider,
+                  openaiClient: openaiClient ?? undefined,
+                },
+              );
+              anyVisionRan = true;
+              counts.visionTagged++;
+              setState({ stageCounts: { ...counts } });
+            } catch (err) {
+              console.warn(
+                "[parallel] vision failed for",
+                media.id,
+                err instanceof Error ? err.message : err,
+              );
+            }
+          }
+
+          // Link content: fetch OG metadata from URLs in the bookmark
+          let linkSummaries: BookmarkForEnrichment["linkSummaries"];
+          let entities: BookmarkForEnrichment["entities"];
+          let threadReplyTexts: string[] | undefined;
+          if (bm.entities) {
+            try {
+              entities = JSON.parse(
+                bm.entities,
+              ) as BookmarkForEnrichment["entities"];
+            } catch {
+              /* ignore */
+            }
+          }
+
+          // Thread extraction: fetch URLs + text from author's follow-up tweets
+          let threadUrls: string[] = [];
+          if (entities?.tweetType === "thread" && bm.rawJson) {
+            const conversationId = extractConversationId(bm.rawJson);
+            if (conversationId) {
               try {
-                await analyzeItem(
-                  {
-                    id: media.id,
-                    url: media.url,
-                    thumbnailUrl: media.thumbnailUrl,
-                    type: media.type,
-                  },
-                  client,
-                  model,
+                const threadCtx = await fetchThreadContext(
+                  conversationId,
+                  bm.authorHandle,
                 );
-                anyVisionRan = true;
-                counts.visionTagged++;
-                setState({ stageCounts: { ...counts } });
-              } catch (err) {
-                console.warn(
-                  "[parallel] vision failed for",
-                  media.id,
-                  err instanceof Error ? err.message : err,
-                );
+                threadUrls = threadCtx.urls;
+                if (threadCtx.replyTexts.length > 0) {
+                  threadReplyTexts = threadCtx.replyTexts;
+                }
+              } catch {
+                /* non-fatal */
               }
             }
           }
 
-          // Enrichment: generate semantic tags if not already done
+          // Merge entity URLs + thread URLs, then fetch OG metadata
+          const allUrls = [...(entities?.urls ?? []), ...threadUrls];
+          if (allUrls.length > 0) {
+            try {
+              const summaries = await fetchLinkSummaries(allUrls);
+              if (summaries.length > 0) linkSummaries = summaries;
+            } catch {
+              /* non-fatal */
+            }
+          }
+
+          // Queue for enrichment (batched) if not already enriched
           if (!bm.semanticTags) {
-            // Re-fetch image tags from DB after vision (or use initial fetch if no vision ran)
             const imageTags = anyVisionRan
               ? (
                   await prisma.mediaItem.findMany({
@@ -384,59 +544,37 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
                     (t): t is string => t !== null && t !== "" && t !== "{}",
                   );
 
-            if (imageTags.length === 0 && bm.text.length < 20) {
-              // Trivial bookmark — skip enrichment
+            if (
+              imageTags.length === 0 &&
+              bm.text.length < 20 &&
+              !linkSummaries?.length &&
+              !threadReplyTexts?.length
+            ) {
+              // Trivial bookmark — skip enrichment, queue directly for categorization
               await prisma.bookmark.update({
                 where: { id: bm.id },
                 data: { semanticTags: "[]" },
               });
+              catPending.push(bm.id);
             } else {
-              let entities: BookmarkForEnrichment["entities"] = undefined;
-              if (bm.entities) {
-                try {
-                  entities = JSON.parse(
-                    bm.entities,
-                  ) as BookmarkForEnrichment["entities"];
-                } catch {
-                  /* ignore */
-                }
-              }
-              try {
-                const results = await enrichBatchSemanticTags(
-                  [{ id: bm.id, text: bm.text, imageTags, entities }],
-                  client,
-                );
-                const result = results[0];
-                if (result?.tags.length) {
-                  await prisma.bookmark.update({
-                    where: { id: bm.id },
-                    data: {
-                      semanticTags: JSON.stringify(result.tags),
-                      enrichmentMeta: JSON.stringify({
-                        sentiment: result.sentiment,
-                        people: result.people,
-                        companies: result.companies,
-                      }),
-                    },
-                  });
-                  counts.enriched++;
-                  setState({ stageCounts: { ...counts } });
-                }
-              } catch (err) {
-                console.warn(
-                  "[parallel] enrichment failed for",
-                  bm.id,
-                  err instanceof Error ? err.message : err,
-                );
-              }
+              enrichPending.push({
+                id: bm.id,
+                text: bm.text,
+                imageTags,
+                entities,
+                linkSummaries,
+                threadReplyTexts,
+              });
+              await drainEnrichQueue();
             }
+          } else {
+            // Already enriched — queue directly for categorization
+            catPending.push(bm.id);
+            await drainCategorizeQueue();
           }
 
-          // Queue for categorization
-          catPending.push(bm.id);
           processedCount++;
           setState({ done: processedCount, stageCounts: { ...counts } });
-          await drainCategorizeQueue();
         }
 
         // Run all bookmark workers with bounded concurrency
@@ -446,7 +584,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         try {
           await runWithConcurrency(tasks, PIPELINE_WORKERS);
         } finally {
-          // Always drain remaining items even if some workers threw
+          // Drain remaining items in enrichment → categorization order
+          await drainEnrichQueue(true);
           await drainCategorizeQueue(true);
         }
       }
@@ -462,28 +601,24 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       await rebuildFts().catch((err) =>
         console.error("FTS rebuild error:", err),
       );
+
+      // Auto-regenerate research topics after enrichment
+      console.log("[pipeline] Regenerating research topics...");
+      await generateResearchTopics({ distanceThreshold: 0.45 }).catch((err) =>
+        console.error("Topic generation error:", err),
+      );
     }
-  })()
-    .then(() => {
-      const wasStopped = globalState.categorizationAbort;
-      globalState.categorizationAbort = false;
-      setState({
-        status: "idle",
-        stage: null,
-        done: wasStopped ? getState().done : total,
-        total,
-        error: wasStopped ? "Stopped by user" : null,
-      });
-    })
-    .catch((err) => {
-      globalState.categorizationAbort = false;
-      console.error("Categorization pipeline error:", err);
-      setState({
-        status: "idle",
-        stage: null,
-        error: err instanceof Error ? err.message : String(err),
-      });
+
+    const wasStopped = globalState.categorizationAbort;
+    globalState.categorizationAbort = false;
+    setState({
+      status: "idle",
+      stage: null,
+      done: wasStopped ? getState().done : capturedTotal,
+      total: capturedTotal,
+      error: wasStopped ? "Stopped by user" : null,
     });
+  });
 
   return NextResponse.json({ status: "started", total });
 }

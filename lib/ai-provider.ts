@@ -43,12 +43,59 @@ async function getModel(provider: AIProvider): Promise<string> {
   return _modelCache;
 }
 
+// ── OpenAI key cache ─────────────────────────────────────────────────────
+
+let _openaiKeyCache: string | null = null;
+let _openaiKeyExpiry = 0;
+
+async function getOpenAIKey(): Promise<string> {
+  if (_openaiKeyCache && Date.now() < _openaiKeyExpiry) return _openaiKeyCache;
+  const dbKey = await prisma.setting
+    .findUnique({ where: { key: "openaiApiKey" } })
+    .then((s) => s?.value?.trim() ?? "")
+    .catch(() => "");
+  const key = dbKey || process.env.OPENAI_API_KEY?.trim() || "";
+  _openaiKeyCache = key;
+  _openaiKeyExpiry = Date.now() + 60_000;
+  return key;
+}
+
 // ── Client construction ───────────────────────────────────────────────────
 
 function createOpenAIClient(dbKey?: string): OpenAI {
   const apiKey = dbKey?.trim() || process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) throw new Error("No OpenAI API key configured.");
   return new OpenAI({ apiKey });
+}
+
+/**
+ * Get a cached OpenAI client (avoids DB lookup per call during pipeline runs).
+ */
+export async function getCachedOpenAIClient(): Promise<OpenAI> {
+  const key = await getOpenAIKey();
+  if (!key) throw new Error("No OpenAI API key configured.");
+  return new OpenAI({ apiKey: key });
+}
+
+/**
+ * Pre-flight check: verify the configured provider has an API key before
+ * starting a long pipeline. Returns an error message or null if OK.
+ */
+export async function preflightProviderCheck(): Promise<string | null> {
+  const provider = await getAIProvider();
+  if (provider === "openai") {
+    const key = await getOpenAIKey();
+    if (!key) return "No OpenAI API key configured. Go to Settings to add one.";
+  } else {
+    const dbKey = await prisma.setting
+      .findUnique({ where: { key: "anthropicApiKey" } })
+      .then((s) => s?.value?.trim() ?? "")
+      .catch(() => "");
+    if (!dbKey && !process.env.ANTHROPIC_API_KEY) {
+      return "No Anthropic API key configured. Go to Settings to add one, or log in with Claude CLI.";
+    }
+  }
+  return null;
 }
 
 // ── Unified completion ────────────────────────────────────────────────────
@@ -71,11 +118,7 @@ export async function chatComplete(
   const maxTokens = options.maxTokens ?? 2048;
 
   if (provider === "openai") {
-    const dbKey = await prisma.setting
-      .findUnique({ where: { key: "openaiApiKey" } })
-      .then((s) => s?.value ?? "")
-      .catch(() => "");
-    const client = createOpenAIClient(dbKey);
+    const client = await getCachedOpenAIClient();
     const res = await client.chat.completions.create({
       model,
       max_tokens: maxTokens,

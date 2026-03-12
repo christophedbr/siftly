@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 import prisma from "@/lib/db";
 import { buildImageContext } from "@/lib/image-context";
 import {
@@ -7,7 +8,13 @@ import {
   modelNameToCliAlias,
 } from "@/lib/claude-cli-auth";
 import { getAnthropicModel } from "@/lib/settings";
-import { chatComplete, getAIProvider } from "@/lib/ai-provider";
+import {
+  chatComplete,
+  getAIProvider,
+  getCachedOpenAIClient,
+  type AIProvider,
+} from "@/lib/ai-provider";
+import { fetchLinkSummaries, type LinkSummary } from "@/lib/link-content";
 
 export { getAnthropicModel } from "@/lib/settings";
 
@@ -154,6 +161,75 @@ async function analyzeImageWithRetry(
   }
 }
 
+// ── OpenAI vision analysis ────────────────────────────────────────────────
+
+async function analyzeImageWithOpenAI(
+  url: string,
+  client: OpenAI,
+  model: string,
+  attempt = 0,
+): Promise<string> {
+  const img = await fetchImageAsBase64(url);
+  if (!img) return "";
+
+  try {
+    const res = await client.chat.completions.create({
+      model,
+      max_tokens: 700,
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "image_url",
+              image_url: {
+                url: `data:${img.mediaType};base64,${img.data}`,
+                detail: "low",
+              },
+            },
+            { type: "text", text: ANALYSIS_PROMPT },
+          ],
+        },
+      ],
+    });
+    const raw = res.choices[0]?.message?.content?.trim() ?? "";
+    if (!raw) return "";
+
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return "";
+    JSON.parse(jsonMatch[0]); // validate
+    return jsonMatch[0];
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const isClientError =
+      msg.includes("400") ||
+      msg.includes("401") ||
+      msg.includes("403") ||
+      msg.includes("422");
+    const isRetryable =
+      !isClientError &&
+      (msg.includes("rate") ||
+        msg.includes("429") ||
+        msg.includes("500") ||
+        msg.includes("502") ||
+        msg.includes("503") ||
+        msg.includes("ECONNREFUSED") ||
+        msg.includes("ETIMEDOUT"));
+
+    if (attempt === 0) {
+      console.warn(
+        `[vision-openai] analysis failed (attempt ${attempt + 1}): ${msg.slice(0, 120)}`,
+      );
+    }
+
+    if (isRetryable && attempt < RETRY_DELAYS_MS.length) {
+      await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt]));
+      return analyzeImageWithOpenAI(url, client, model, attempt + 1);
+    }
+    return "";
+  }
+}
+
 export interface MediaItemForAnalysis {
   id: string;
   url: string;
@@ -178,8 +254,9 @@ async function getCachedAnalysis(
 
 export async function analyzeItem(
   item: MediaItemForAnalysis,
-  client: Anthropic,
+  client: Anthropic | null,
   model: string,
+  options?: { provider?: AIProvider; openaiClient?: OpenAI },
 ): Promise<number> {
   const imageUrl =
     item.type === "video" ? (item.thumbnailUrl ?? item.url) : item.url;
@@ -195,7 +272,13 @@ export async function analyzeItem(
   }
 
   const prefix = item.type === "video" ? '{"_type":"video_thumbnail",' : "";
-  let tags = await analyzeImageWithRetry(imageUrl, client, model);
+  let tags = "";
+
+  if (options?.provider === "openai" && options?.openaiClient) {
+    tags = await analyzeImageWithOpenAI(imageUrl, options.openaiClient, model);
+  } else if (client) {
+    tags = await analyzeImageWithRetry(imageUrl, client, model);
+  }
 
   if (tags && prefix) {
     // Inject a _type marker into the JSON for video thumbnails
@@ -342,6 +425,8 @@ export interface BookmarkForEnrichment {
     tools?: string[];
     tweetType?: string;
   };
+  linkSummaries?: LinkSummary[];
+  threadReplyTexts?: string[]; // text from thread follow-up tweets
 }
 
 export interface EnrichmentResult {
@@ -368,6 +453,20 @@ function buildEnrichmentPrompt(bookmarks: BookmarkForEnrichment[]): string {
     if (b.entities?.tools?.length) entry.tools = b.entities.tools;
     if (b.entities?.mentions?.length)
       entry.mentions = b.entities.mentions.slice(0, 3);
+    if (b.linkSummaries?.length) {
+      entry.linkedContent = b.linkSummaries
+        .map(
+          (l) =>
+            `${l.title}${l.description ? ` — ${l.description}` : ""}${l.siteName ? ` (via ${l.siteName})` : ""}`,
+        )
+        .join(" | ");
+    }
+    if (b.threadReplyTexts?.length) {
+      entry.threadReplies = b.threadReplyTexts
+        .map((t) => t.slice(0, 200))
+        .slice(0, 5)
+        .join(" | ");
+    }
     return entry;
   });
 

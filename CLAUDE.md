@@ -2,6 +2,17 @@
 
 Self-hosted Twitter/X bookmark manager with AI-powered categorization, search, and visualization.
 
+## Tech Stack
+
+| Layer    | Tech                            | Notes                                         |
+| -------- | ------------------------------- | --------------------------------------------- |
+| Frontend | Next.js 16 (App Router)         | `app/` directory                              |
+| ORM      | Prisma 7 (`@prisma/client`)     | `prisma/schema.prisma`                        |
+| Database | SQLite (local file)             | FTS5 full-text search via `lib/fts.ts`        |
+| AI auth  | Claude CLI OAuth (Mac Keychain) | `lib/claude-cli-auth.ts`; no API key needed   |
+| Search   | SQLite FTS5 + Claude semantic   | `app/api/search/ai/`                          |
+| Pipeline | 4-stage AI categorization       | `app/api/categorize/` (SSE start/stop/status) |
+
 ## Quick Setup
 
 ```bash
@@ -19,6 +30,7 @@ npx next dev
 App runs at **http://localhost:3000**
 
 For a single command that does all of the above and opens the browser automatically:
+
 ```bash
 ./start.sh
 ```
@@ -28,6 +40,7 @@ For a single command that does all of the above and opens the browser automatica
 If the user is signed into Claude Code CLI, **Siftly uses their Claude subscription automatically**. No API key configuration required.
 
 How it works:
+
 - `lib/claude-cli-auth.ts` reads the OAuth token from the macOS keychain (`Claude Code-credentials`)
 - Uses `authToken` + `anthropic-beta: oauth-2025-04-20` header in the Anthropic SDK
 - Falls back to: DB-saved API key → `ANTHROPIC_API_KEY` env var → local proxy
@@ -114,15 +127,19 @@ npm run siftly -- stats                              # Alternative via npm scrip
 ## Common Tasks
 
 ### Run the AI pipeline manually
+
 POST to `/api/categorize` with `{}` body. Monitor progress via GET `/api/categorize` (returns SSE stream).
 
 ### Add a new bookmark category
+
 Edit `DEFAULT_CATEGORIES` array in `lib/categorizer.ts`. Add name, slug, hex color, and description. The description text is passed verbatim to Claude — be specific.
 
 ### Add a known tool for entity extraction
+
 Append a domain string to `KNOWN_TOOL_DOMAINS` in `lib/rawjson-extractor.ts`.
 
 ### Test API auth
+
 ```bash
 curl -X POST http://localhost:3000/api/settings/test \
   -H "Content-Type: application/json" \
@@ -131,6 +148,7 @@ curl -X POST http://localhost:3000/api/settings/test \
 ```
 
 ### Check Claude CLI auth status
+
 ```bash
 curl http://localhost:3000/api/settings/cli-status
 # Returns: {"available": true, "subscriptionType": "max", "expired": false}
